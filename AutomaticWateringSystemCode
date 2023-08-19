@@ -1,0 +1,323 @@
+#include <SoftwareSerial.h>
+SoftwareSerial mySerial(10, 11); // RX, TX
+
+// this is a program for an automatic watering system that is controlled by bluetooth.
+// meant to be run on an arduino uno.
+
+volatile float ldrRead;
+volatile float moistRead;
+volatile int pumpFlag = 0;
+volatile int pumpOnTime = 40; // pump on time by default is 2000 millis change according to plant..
+volatile int pumpCount = 0;
+String from_phone;
+int setFlag = 0;
+int remindFlag = 0;
+int remindMessageFlag = 0;
+int autoFlag = 0;
+int milli = 0;
+int seconds = 0;
+int minutes = 0;
+int hours = 0;
+int days = 0;
+int remind  = 1;
+
+
+void setup()
+{
+  Serial.begin(9600);
+  mySerial.begin(9600);
+
+  pinMode(5,OUTPUT);
+  pinMode(2,OUTPUT);
+  
+  digitalWrite(2,LOW);
+  
+  // initialize timer1 
+  noInterrupts();           // disable all interrupts
+  timer1_init(100); //period time in msec
+  interrupts();             // enable all interrupts
+
+  mySerial.println("Hello fellow gardener. please choose a command for the system from the following. by default the the system is on hand mode");
+  mySerial.println("(or not, that ok too..):");
+  mySerial.println("status --->  shows moist and light levels on plant and last watering time");
+  mySerial.println("on --->  turn pump on");
+  mySerial.println("auto --->  turn auto mode on");
+  mySerial.println("hand --->  disable auto");
+  mySerial.println("set --->  set pump on time");
+  mySerial.println("remind --->  set how often the plant needs to be watered (in days)");
+  mySerial.println("by default it will remind once a day.");
+  mySerial.println("commands --->  print commands again");
+}
+
+void loop()
+{ 
+  if (mySerial.available())
+  {
+     from_phone = mySerial.readString();
+
+     if(from_phone == "commands\r\n")
+     {
+        mySerial.println("");
+        mySerial.println("//////////");
+        mySerial.println("");
+        mySerial.print("Hello fellow gardener. please choose a command for the system from the following");
+        mySerial.println("(or not, that ok too..):");
+        mySerial.println("status --->  shows moist and light levels on plant");
+        mySerial.println("on --->  turn pump on");
+        mySerial.println("auto --->  turn auto mode on");
+        mySerial.println("hand --->  disable auto");
+        mySerial.println("set --->  set pump on time");
+        mySerial.println("remind --->  set how often the plant needs to be watered (in days)");
+        mySerial.println("by default it will remind once a day.");
+        mySerial.println("commands --->  print commands again");
+        mySerial.println("");
+        mySerial.println("//////////");
+        mySerial.println("");
+     }
+
+     if(from_phone == "status\r\n")
+     {
+        mySerial.println("");
+        mySerial.println("//////////");
+        mySerial.println("");
+        mySerial.print("daylight level is: ");
+        mySerial.print(ldrRead);
+        mySerial.println(" (5 means completly dark).");
+
+        mySerial.print("mositure level is: ");
+        mySerial.print(moistRead);
+        mySerial.println(" (5 is completly wet).");
+
+        if(autoFlag == 1)
+        {
+          mySerial.println("the system is currently on auto mode.");
+        }
+        else
+        {
+          mySerial.println("the system currently operates by hand.");
+        }
+
+        mySerial.println("last time your plant was watered is: ");
+        mySerial.print(days);
+        mySerial.print(" days ");
+        mySerial.print(hours);
+        mySerial.print(" hours ");
+        mySerial.print(minutes);
+        mySerial.print(" minutes and ");
+        mySerial.print(seconds);
+        mySerial.println(" seconds.");
+        mySerial.println("");
+        mySerial.println("//////////");
+        mySerial.println("");
+    }
+    if(from_phone == "set\r\n")
+    {
+        mySerial.println("");
+        mySerial.println("//////////");
+        mySerial.print("the current pump on time is ");
+        mySerial.print(pumpOnTime / 10);
+        mySerial.print(" seconds.");
+        mySerial.println("please enter new pump on time in seconds:");
+        mySerial.println("");
+        setFlag = 1;
+    }
+    if(setFlag == 1)
+    {
+      if(from_phone.toInt() == 0)
+      {
+        if(from_phone != "set\r\n")
+        {
+          mySerial.println("please enter a valid number");
+        }
+      }
+      else
+      {
+        pumpOnTime = from_phone.toInt();
+        mySerial.print("the pump on time is now: ");
+        mySerial.print(pumpOnTime);
+        mySerial.println(" seconds");
+        mySerial.println("//////////");
+        mySerial.println("");
+        pumpOnTime = pumpOnTime * 10;
+        if(from_phone != "set\r\n")
+        {
+          setFlag = 0;
+        }
+        from_phone = "";
+      }
+    }
+    if(from_phone == "on\r\n")
+    {
+      if(autoFlag == 0)
+      {
+        pumpFlag = 1;
+        mySerial.println("");
+        mySerial.println("////////");
+        mySerial.println("");
+        mySerial.println("the pump has turned on.");
+        mySerial.println("");
+        mySerial.println("////////");
+        mySerial.println("");
+      }
+      else
+      {
+        mySerial.println("please disable auto mode first");
+        from_phone = "";
+      }
+    }
+    if(from_phone == "auto\r\n")
+    {
+      mySerial.println("");
+      mySerial.println("//////////");
+      mySerial.println("auto mode is on.");
+      mySerial.println("");
+      mySerial.println("//////////");
+      mySerial.println("");
+      autoFlag = 1;
+      remindMessageFlag = 0;
+      from_phone = "";
+    }
+    if(from_phone == "hand\r\n")
+    {
+      mySerial.println("");
+      mySerial.println("//////////");
+      mySerial.println("auto mode is off");
+      mySerial.println("");
+      mySerial.println("//////////");
+      mySerial.println("");
+      autoFlag = 0;
+      remindMessageFlag = 1;
+      from_phone = "";
+    }
+    if(from_phone == "remind\r\n")
+    {
+        mySerial.println("");
+        mySerial.println("//////////");
+        mySerial.print("the current reminding time is ");
+        mySerial.print(remind);
+        mySerial.print(" days. ");
+        mySerial.println("enter new amount of days to remind you to water the plant:");
+        mySerial.println("");
+        remindFlag = 1;
+    }
+    if(remindFlag == 1)
+    {
+      if(from_phone.toInt() == 0)
+      {
+        if(from_phone != "remind\r\n")
+        {
+          mySerial.println("please enter a valid number of days");
+        }
+      }
+      else
+      {
+        remind = from_phone.toInt();
+        mySerial.print("will remind you to water your plant in:");
+        mySerial.print(remind);
+        mySerial.println(" days.");
+        mySerial.println("//////////");
+        mySerial.println("");
+        if(from_phone != "remind\r\n")
+        {
+          remindFlag = 0;
+        }
+        from_phone = "";
+      }
+    }
+  }
+
+  if(pumpCount == pumpOnTime)
+  {
+    pumpFlag = 0;
+    from_phone = "";
+  }
+  else
+  {
+    if(pumpFlag == 1)
+    {
+      digitalWrite(2,HIGH);
+      analogWrite(5,350);
+    }
+    else
+    {
+      digitalWrite(2,LOW);
+      analogWrite(5,0);
+    }
+  }
+  
+  if(autoFlag == 1 && ldrRead >= 3.8 && moistRead <= 2.3)
+  {
+    mySerial.println("");
+    mySerial.println("////////");
+    mySerial.println("");
+    mySerial.println("the pump has turned on.");
+    pumpFlag = 1;
+    mySerial.println("");
+    mySerial.println("////////");
+    mySerial.println("");
+  }
+  if(milli >= 10)
+  {
+    seconds++;
+    milli = 0;
+  }
+  if(seconds >= 60)
+  {
+    minutes++;
+    seconds = 0;
+  }
+  if(minutes >= 60)
+  {
+    hours++;
+    minutes = 0;
+  }
+  if(hours >= 24)
+  {
+    days++;
+    hours = 0;
+  }
+  if(remind <= days && remindMessageFlag == 1)
+  {
+    mySerial.println("your plant is thirsty :((((, type 'on' to water it.");
+  }
+}
+
+ISR(TIMER1_COMPA_vect)          // timer1 compare interrupt service routine
+{
+  ldrRead = (5.0 * analogRead(A2)) / 1023.0;
+  moistRead = (5.0 * analogRead(A0)) / 1023.0;
+
+  milli++;
+  
+  if(pumpFlag == 1)
+  {
+    pumpCount++;
+    seconds = 0;
+    minutes = 0;
+    hours = 0;
+    days = 0;
+  }
+  else
+  {
+    pumpCount = 0;
+  }
+}
+
+
+
+void timer1_init(int msec) {
+  // initialize timer1 to freq=16M/(2*256)=31250Hz
+  //1 sec interrupt--> OCR1A = 31250/2 cycles=15625 cycles=1/2 sec
+TCCR1A = 0;// set entire TCCR1A register to 0
+TCCR1B = 0;// same for TCCR1B
+TCNT1 = 0;//initialize counter value to 0
+// set compare match register for 1hz increments
+//OCR1A = 15624;// = (1610^6) / (11024) - 1 (must be <65536)
+OCR1A = (int)15.624*msec;
+// turn on CTC mode
+TCCR1B |= (1 << WGM12);
+// Set CS10 and CS12 bits for 1024 prescaler
+TCCR1B |= (1 << CS12) | (1 << CS10);
+// enable timer compare interrupt
+TIMSK1 |= (1 << OCIE1A);
+}
