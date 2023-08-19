@@ -1,0 +1,686 @@
+// code for tennis game board
+// first takes an input for game level on pins
+// then the user needs to hit the board where the leds are lit
+// if the user reached the score which is set by the chosen game level the game is finished and will wait for a restart
+// the hit sensors are piezoelectric sensors with a 1Meg resistor in parrallel to them.
+
+// 7seg1 pins are 31-45
+// 7seg2 pins are 30-44
+// spot led pins are 22-27
+// pizeo inputs are a0 a2 a3 a4 a5 a7
+
+//THINGS TO ADD: user input for game level pick, restart game button.
+
+int threshold = 17; // the piezo hit threshold
+int strongestPiezo; // the number of piezo input which had the strongest hit;
+volatile int totalScore = -1; // user's score starts at -1 and updates on game begin to 0
+volatile int currentSpotTohit; // the spots now lit. will be compared against strongestPiezo to check if the user hit the right spot
+volatile int previousSpotToHit; // this is used to save the last spot. needed to to light the same spot more than 1 time in a row and also prevent score glitches.
+
+volatile int gameOnFlag; // if 1 the game is still going.
+
+volatile int setGameLevel = 0; // game level flag for all functions 0 is easy 1 is hard
+volatile int scoreToBeat[2] = {10,20}; // game score to beat according to chosen level
+
+int spots[6] = {22,23,24,25,26,27}; // spots led output pins
+
+void setup()
+{
+  attachInterrupt(digitalPinToInterrupt(49), Restart, RISING);
+  attachInterrupt(digitalPinToInterrupt(48), changeGameLevel, CHANGE);
+  
+  //pinMode(48,INPUT); // input for game level. 0 for lvl 1 1 for lvl 2
+  
+  //LED Outputs
+  pinMode(spots[0],OUTPUT);
+  pinMode(spots[1],OUTPUT);
+  pinMode(spots[2],OUTPUT);
+  pinMode(spots[3],OUTPUT);
+  pinMode(spots[4],OUTPUT);
+  pinMode(spots[5],OUTPUT);
+
+  //7 segment 1 outputs
+  pinMode(31,OUTPUT);
+  pinMode(33,OUTPUT);
+  pinMode(35,OUTPUT);
+  pinMode(37,OUTPUT);
+  pinMode(39,OUTPUT);
+  pinMode(41,OUTPUT);
+  pinMode(43,OUTPUT);
+  pinMode(45,OUTPUT);
+  pinMode(47,OUTPUT);
+
+  //7 segment 2 outputs
+  pinMode(30,OUTPUT);
+  pinMode(32,OUTPUT);
+  pinMode(34,OUTPUT);
+  pinMode(36,OUTPUT);
+  pinMode(38,OUTPUT);
+  pinMode(40,OUTPUT);
+  pinMode(42,OUTPUT);
+  pinMode(44,OUTPUT);  
+
+  //initiliize 7 segment 1
+  digitalWrite(31,HIGH);
+  digitalWrite(33,HIGH);
+  digitalWrite(35,HIGH);
+  digitalWrite(37,HIGH);
+  digitalWrite(39,HIGH);
+  digitalWrite(41,HIGH);
+  digitalWrite(43,HIGH);
+  digitalWrite(45,HIGH);
+  digitalWrite(47,HIGH);
+
+  //initiliize 7 segment 2
+  digitalWrite(30,HIGH);
+  digitalWrite(32,HIGH);
+  digitalWrite(34,HIGH);
+  digitalWrite(36,HIGH);
+  digitalWrite(38,HIGH);
+  digitalWrite(40,HIGH);
+  digitalWrite(42,HIGH);
+  digitalWrite(44,HIGH);
+
+  setGameLevel = digitalRead(48);
+  
+  gameOnFlag = 1;
+  rightSpotWasHit();
+  updateScore(totalScore);
+  
+  Serial.begin(9600);
+}
+
+void Restart()
+{
+  totalScore = -1;
+  rightSpotWasHit();
+  updateScore(totalScore);
+  gameOnFlag = 1;
+}
+
+void changeGameLevel()
+{
+  if(setGameLevel == 1)
+  {
+    setGameLevel = 0;
+  }
+  else
+  {
+    setGameLevel = 1;
+  }
+  Restart();
+}
+
+void loop()
+{
+  if(gameOnFlag == 1)
+  {
+    int hit1 = analogRead(A0);
+    int hit2 = analogRead(A2);
+    int hit3 = analogRead(A3);
+    int hit4 = analogRead(A4);
+    int hit5 = analogRead(A5);
+    int hit6 = analogRead(A7);
+
+    if(hit1 > threshold || hit2 > threshold || hit3 > threshold || hit4 > threshold || hit5 > threshold || hit6 > threshold)
+    {
+      
+      if(setGameLevel == 1)
+      {
+        strongestPiezo = find_maxLevel1(hit1,hit2,hit3,hit4,hit5,hit6);
+        if(strongestPiezo == currentSpotTohit)
+        {
+          rightSpotWasHit();
+          updateScore(totalScore);
+        }
+      }
+      if(setGameLevel == 0)
+      {
+        strongestPiezo = find_maxLevel0(hit1,hit2,hit3,hit4,hit5,hit6);
+        if(strongestPiezo == currentSpotTohit)
+        {
+          rightSpotWasHit();
+          updateScore(totalScore);
+        }
+      }
+      Serial.print("hit1: ");
+      Serial.println(hit1);
+  
+      Serial.print("hit2: ");
+      Serial.println(hit2);
+
+      Serial.print("hit3: ");
+      Serial.println(hit3);
+
+      Serial.print("hit4: ");
+      Serial.println(hit4);
+
+      Serial.print("hit5: ");
+      Serial.println(hit5);
+
+      Serial.print("hit6: ");
+      Serial.println(hit6);
+
+      switch(strongestPiezo)
+      {
+        case 0:
+          Serial.println("1 is max");
+          break;
+        case 1:
+          Serial.println("2 is max");
+          break;
+        case 2:
+          Serial.println("3 is max");
+          break;
+        case 3:
+          Serial.println("4 is max");
+          break;
+        case 4:
+          Serial.println("5 is max");
+          break;
+        case 5:
+          Serial.println("6 is max");
+          break;
+        case 7:
+          break;
+      }
+    }
+
+    hit1 = 0;
+    hit2 = 0;
+    hit3 = 0;
+    hit4 = 0;
+    hit5 = 0;
+    hit6 = 0;
+
+    delay(50);
+  }
+  if(gameOnFlag == 0)
+  {
+    endGame();
+  }
+}
+
+void endGame() // flash all lights when game over.
+{
+  Eight(1,1);
+  digitalWrite(spots[0],HIGH);
+  digitalWrite(spots[1],HIGH);
+  digitalWrite(spots[2],HIGH);
+  digitalWrite(spots[3],HIGH);
+  digitalWrite(spots[4],HIGH);
+  digitalWrite(spots[5],HIGH);
+  delay(500);
+  LedsOff();
+  turnOffSpots();
+  delay(500);
+}
+
+void rightSpotWasHit() //update score, light the next led spot
+{
+  totalScore++;
+  if(totalScore >= scoreToBeat[setGameLevel])
+  {
+    gameOnFlag = 0;
+  }
+  else
+  {
+    previousSpotToHit = currentSpotTohit;
+    while(previousSpotToHit == currentSpotTohit)
+    {
+      if(setGameLevel == 1)
+      {
+        currentSpotTohit = random(0,6);
+      }
+      else
+      {
+        currentSpotTohit = random(0,3);
+      }
+    }
+    turnOffSpots();
+    turnOnSpots(currentSpotTohit);
+  }
+}
+
+
+void turnOffSpots() // turn off all led spots
+{
+  digitalWrite(spots[0],LOW);
+  digitalWrite(spots[1],LOW);
+  digitalWrite(spots[2],LOW);
+  digitalWrite(spots[3],LOW);
+  digitalWrite(spots[4],LOW);
+  digitalWrite(spots[5],LOW);
+}
+
+void turnOnSpots(int spot)
+{
+  if(setGameLevel == 0)
+  {
+    switch(spot)
+    {
+      case 0:
+        digitalWrite(spots[0],HIGH);
+        digitalWrite(spots[1],HIGH);
+        break;
+      case 1:
+        digitalWrite(spots[2],HIGH);
+        digitalWrite(spots[3],HIGH);
+        break;
+      case 2:
+        digitalWrite(spots[4],HIGH);
+        digitalWrite(spots[5],HIGH);
+        break;
+    }
+  }
+  else
+  {
+    digitalWrite(spots[currentSpotTohit],HIGH);
+  }
+}
+
+void updateScore(int score) // input score and light up 7seg accordingly
+{
+  LedsOff();
+  switch(score)
+  {
+    case 0:
+      Zero(1,1);
+      break;
+    case 1:
+      One(1,0);
+      Zero(0,1);
+      break;
+    case 2:
+      Two(1,0);
+      Zero(0,1);
+      break;
+    case 3:
+      Three(1,0);
+      Zero(0,1);
+      break;
+    case 4:
+      Four(1,0);
+      Zero(0,1);
+      break;
+    case 5:
+      Five(1,0);
+      Zero(0,1);
+      break;
+    case 6:
+      Six(1,0);
+      Zero(0,1);
+      break;
+    case 7:
+      Seven(1,0);
+      Zero(0,1);
+      break;
+    case 8:
+      Eight(1,0);
+      Zero(0,1);
+      break;
+    case 9:
+      Nine(1,0);
+      Zero(0,1);
+      break;
+    case 10:
+      Zero(1,0);
+      One(0,1);
+      break;
+    case 11:
+      One(1,1);
+      break;
+    case 12:
+      One(0,1);
+      Two(1,0);
+      break;
+    case 13:
+      One(0,1);
+      Three(1,0);
+      break;
+    case 14:
+      One(0,1);
+      Four(1,0);
+      break;
+    case 15:
+      One(0,1);
+      Five(1,0);
+      break;
+    case 16:
+      One(0,1);
+      Six(1,0);
+      break;
+    case 17:
+      One(0,1);
+      Seven(1,0);
+      break;
+    case 18:
+      One(0,1);
+      Eight(1,0);
+      break;
+    case 19:
+      One(0,1);
+      Nine(1,0);
+      break;
+  }
+}
+
+int find_maxLevel0(int a, int b, int c, int d, int e, int f) // recieve piezo inputs and return max
+{
+  int maximum = 0;
+  
+  if (b > a)
+  {
+    maximum = 0;
+  }
+  if (c > b)
+  {
+    maximum = 1;
+  }
+  if (d > c)
+  {
+    maximum = 1;
+  }
+  if (e > d)
+  {
+    maximum = 2;
+  }
+  if (f > e)
+  {
+    maximum = 2;
+  }
+  return maximum;
+}
+
+int find_maxLevel1(int a, int b, int c, int d, int e, int f) // recieve piezo inputs and return max
+{
+  int maximum = 0;
+  
+  if (b > a)
+  {
+    maximum = 1;
+  }
+  if (c > b)
+  {
+    maximum = 2;
+  }
+  if (d > c)
+  {
+    maximum = 3;
+  }
+  if (e > d)
+  {
+    maximum = 4;
+  }
+  if (f > e)
+  {
+    maximum = 5;
+  }
+  return maximum;
+}
+
+void LedsOff() // turn off all 7seg
+{
+  digitalWrite(31,HIGH);
+  digitalWrite(33,HIGH);
+  digitalWrite(35,HIGH);
+  digitalWrite(37,HIGH);
+  digitalWrite(39,HIGH);
+  digitalWrite(41,HIGH);
+  digitalWrite(43,HIGH);
+  digitalWrite(45,HIGH);
+  digitalWrite(47,HIGH);
+
+  digitalWrite(30,HIGH);
+  digitalWrite(32,HIGH);
+  digitalWrite(34,HIGH);
+  digitalWrite(36,HIGH);
+  digitalWrite(38,HIGH);
+  digitalWrite(40,HIGH);
+  digitalWrite(42,HIGH);
+  digitalWrite(44,HIGH);
+}
+
+// the next functions recieve which 7seg to light and light the number same as the functions name
+
+void Zero(int one, int two)
+{
+  if(one == 1)
+  {
+    digitalWrite(33,LOW);
+    digitalWrite(37,LOW);
+    digitalWrite(39,LOW);
+    digitalWrite(45,LOW);
+    digitalWrite(43,LOW);
+    digitalWrite(41,LOW);
+  }
+  if(two == 1)
+  {
+    digitalWrite(32,LOW);
+    digitalWrite(36,LOW);
+    digitalWrite(38,LOW);
+    digitalWrite(44,LOW);
+    digitalWrite(42,LOW);
+    digitalWrite(40,LOW);
+  }
+}
+
+void One(int one, int two)
+{
+  if(one == 1)
+  {
+    digitalWrite(39,LOW);
+    digitalWrite(45,LOW);
+  }
+  if(two == 1)
+  {
+    digitalWrite(38,LOW);
+    digitalWrite(44,LOW);
+  }
+}
+
+void Two(int one, int two)
+{
+  if(one == 1)
+  {
+    digitalWrite(37,LOW);
+    digitalWrite(39,LOW);
+    digitalWrite(31,LOW);
+    digitalWrite(41,LOW);
+    digitalWrite(43,LOW);
+  }
+  if(two == 1)
+  {
+    digitalWrite(36,LOW);
+    digitalWrite(38,LOW);
+    digitalWrite(30,LOW);
+    digitalWrite(40,LOW);
+    digitalWrite(42,LOW);
+  }
+}
+
+void Three(int one, int two)
+{
+  if(one == 1)
+  {
+    digitalWrite(37,LOW);
+    digitalWrite(39,LOW);
+    digitalWrite(31,LOW);
+    digitalWrite(45,LOW);
+    digitalWrite(43,LOW);
+  }
+  if(two == 1)
+  {
+    digitalWrite(36,LOW);
+    digitalWrite(38,LOW);
+    digitalWrite(30,LOW);
+    digitalWrite(36,LOW);
+    digitalWrite(42,LOW);
+  }
+}
+
+void Four(int one, int two)
+{
+  if(one == 1)
+  {
+    digitalWrite(33,LOW);
+    digitalWrite(31,LOW);
+    digitalWrite(39,LOW);
+    digitalWrite(45,LOW);
+  }
+  if(two == 1)
+  {
+    digitalWrite(32,LOW);
+    digitalWrite(30,LOW);
+    digitalWrite(38,LOW);
+    digitalWrite(44,LOW);
+  }
+}
+
+void Five(int one, int two)
+{
+  if(one == 1)
+  {
+    digitalWrite(37,LOW);
+    digitalWrite(33,LOW);
+    digitalWrite(31,LOW);
+    digitalWrite(45,LOW);
+    digitalWrite(43,LOW);
+  }
+  if(two == 1)
+  {
+    digitalWrite(36,LOW);
+    digitalWrite(32,LOW);
+    digitalWrite(30,LOW);
+    digitalWrite(44,LOW);
+    digitalWrite(42,LOW);
+  }
+}
+
+void Six(int one, int two)
+{
+  if(one == 1)
+  {
+    digitalWrite(33,LOW);
+    digitalWrite(31,LOW);
+    digitalWrite(41,LOW);
+    digitalWrite(43,LOW);
+    digitalWrite(45,LOW);
+  }
+  if(two == 1)
+  {
+    digitalWrite(32,LOW);
+    digitalWrite(30,LOW);
+    digitalWrite(40,LOW);
+    digitalWrite(42,LOW);
+    digitalWrite(44,LOW);
+  }
+}
+
+void Seven(int one, int two)
+{
+  if(one == 1)
+  {
+    digitalWrite(37,LOW);
+    digitalWrite(39,LOW);
+    digitalWrite(31,LOW);
+    digitalWrite(45,LOW);
+  }
+  if(two == 1)
+  {
+    digitalWrite(36,LOW);
+    digitalWrite(38,LOW);
+    digitalWrite(30,LOW);
+    digitalWrite(44,LOW);
+  }
+}
+
+void Eight(int one, int two)
+{
+  if(one == 1)
+  {
+    digitalWrite(33,LOW);
+    digitalWrite(37,LOW);
+    digitalWrite(39,LOW);
+    digitalWrite(31,LOW);
+    digitalWrite(41,LOW);
+    digitalWrite(43,LOW);
+    digitalWrite(45,LOW);
+  }
+  if(two == 1)
+  {
+    digitalWrite(32,LOW);
+    digitalWrite(36,LOW);
+    digitalWrite(38,LOW);
+    digitalWrite(30,LOW);
+    digitalWrite(40,LOW);
+    digitalWrite(42,LOW);
+    digitalWrite(44,LOW);
+  }
+}
+
+void Nine(int one, int two)
+{
+  if(one == 1)
+  {
+    digitalWrite(33,LOW);
+    digitalWrite(37,LOW);
+    digitalWrite(39,LOW);
+    digitalWrite(31,LOW);
+    digitalWrite(45,LOW);
+  }
+  if(two == 1)
+  {
+    digitalWrite(32,LOW);
+    digitalWrite(36,LOW);
+    digitalWrite(38,LOW);
+    digitalWrite(30,LOW);
+    digitalWrite(44,LOW);
+  }
+}
+
+//the following is a serial printing of the hit levels to adjust threshold copy and paste to main loop for test
+
+/*
+      Serial.print("hit1: ");
+      Serial.println(hit1);
+  
+      Serial.print("hit2: ");
+      Serial.println(hit2);
+
+      Serial.print("hit3: ");
+      Serial.println(hit3);
+
+      Serial.print("hit4: ");
+      Serial.println(hit4);
+
+      Serial.print("hit5: ");
+      Serial.println(hit5);
+
+      Serial.print("hit6: ");
+      Serial.println(hit6);
+
+      switch(strongestPiezo)
+      {
+        case 0:
+          Serial.println("1 is max");
+          break;
+        case 1:
+          Serial.println("2 is max");
+          break;
+        case 2:
+          Serial.println("3 is max");
+          break;
+        case 3:
+          Serial.println("4 is max");
+          break;
+        case 4:
+          Serial.println("5 is max");
+          break;
+        case 5:
+          Serial.println("6 is max");
+          break;
+        case 7:
+          break;
+      }
+      */
