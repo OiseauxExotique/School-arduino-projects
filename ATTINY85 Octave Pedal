@@ -1,0 +1,105 @@
+#include <avr/io.h>
+#include <avr/interrupt.h>
+
+// ATTINY85 program for an octave pedal.
+// takes your guitar signal through the analog input.
+// outputs a divided down sqaure wave signal.
+// pin change interrupt on pin 7 sets the division factor.
+
+
+/*
+ *            x --- |    * | --- VCC
+ *   tie to gnd --- |      | --- octave select
+ *        input --- |      | --- oct out
+ *          GND --- |      | --- square out
+ *          
+ *   oct select is on low lvl. tie to V+
+ *   
+ *  
+ */
+
+int divide = 2;
+int count = 0;
+int lastCount = 4;
+
+
+void initADC()
+{
+  DDRB |= (1 << PB0);
+  DDRB |= (1 << PB1);
+  DDRB |= (1 << PB2);
+
+  GIMSK |= (1 << INT0); // external interrupt on low level of pin 5
+ 
+  ADMUX =
+            (1 << ADLAR) |     // left shift result
+            (0 << REFS2) |
+            (1 << REFS1) |     // Sets ref. voltage to 5, bit 1
+            (0 << REFS0) |     
+            (0 << MUX3)  |     // use ADC2 for input (PB4), MUX bit 3
+            (0 << MUX2)  |
+            (1 << MUX1)  |
+            (0 << MUX0); 
+
+  ADCSRA = 
+            (1 << ADEN)  |     // Enable ADC 
+            (1 << ADPS2) |     // set prescaler to 64, bit 2 
+            (1 << ADPS1) |     // set prescaler to 64, bit 1 
+            (0 << ADPS0);      // set prescaler to 64, bit 0
+  sei();
+            
+  PORTB &= ~(1 << PORTB0);
+  PORTB &= ~(1 << PORTB1);
+}
+
+int main() 
+{
+  initADC();
+  while(1)
+  {
+    ADCSRA |= (1 << ADSC);
+
+    while(ADCSRA & (1 << ADSC))
+    {
+      
+    }
+    
+    if (ADCH > 2)
+    {
+      PORTB |= (1 << PORTB0);
+      if(lastCount != 1)
+      {
+        count++;
+      }
+      lastCount = 1;
+    }
+    else
+    {
+      PORTB &= ~(1 << PORTB0);
+      if(lastCount != 0)
+      {
+        count++;
+      }
+      lastCount = 0;
+    }
+    if(count >= divide)
+    {
+      PORTB ^= (1 << PORTB1);
+      count = 0;
+    }
+  }
+
+  return 0;
+}
+
+ISR(INT0_vect)
+{
+  if(divide < 9)
+  {
+    divide++;
+  }
+  else
+  {
+    divide = 2;
+  }
+}
